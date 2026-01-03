@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<title>ทดสอบ Google Cloud TTS</title>
+</head>
+<body>
+  <h2>ทดสอบ Google Cloud Text-to-Speech</h2>
+  <textarea id="text" rows="4" cols="50" placeholder="พิมพ์ข้อความที่นี่...">สวัสดีครับ นี่คือการทดสอบเสียงพูดจาก Google TTS</textarea><br />
+  <button id="btnSpeak">พูดเลย</button>
+
+  <script>
+    document.getElementById('btnSpeak').addEventListener('click', () => {
+      const text = document.getElementById('text').value.trim();
+      if (!text) {
+        alert('กรุณาพิมพ์ข้อความก่อน');
+        return;
+      }
+
+      fetch('tts.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text })
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('API error: ' + res.status);
+          return res.blob();
+        })
+        .then(blob => {
+          const audioUrl = URL.createObjectURL(blob);
+          const audio = new Audio(audioUrl);
+          audio.play();
+          audio.onplay = () => console.log('กำลังเล่นเสียง...');
+          audio.onerror = e => console.error('เสียงเล่นไม่ได้', e);
+        })
+        .catch(err => alert('เกิดข้อผิดพลาด: ' + err.message));
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ทดสอบระบบท่องเที่ยว</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: "Kanit", sans-serif;
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+      #control {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: white;
+        padding: 10px;
+        z-index: 999;
+        border-radius: 8px;
+      }
+      button {
+        margin: 5px 0;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="control">
+      <h4>ระบบติดตาม</h4>
+      <button onclick="startTracking()">เริ่มเดินทาง</button>
+      <button onclick="stopTracking()">หยุด</button>
+    </div>
+    <div id="map"></div>
+    <button onclick="simulateOnePlace()">ทดสอบเดินผ่านสถานที่</button>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCz7R0iH69b-pxkLdWzoFpK2HQPkSfQ7xM"></script>
+    <script>
+      let map;
+      let places = [];
+      let visited = {};
+      let watchId = null;
+      let userMarker = null;
+      let testIndex = 0;
+
+      // แจ้งหน้า opener ว่าพร้อมแล้ว
+      window.opener?.postMessage("READY_FOR_DATA", "*");
+
+      // รับข้อมูลจาก opener
+      window.addEventListener("message", (event) => {
+        if (event.data?.type === "TRIP_LOCATIONS") {
+          places = event.data.data;
+          console.log("📦 ได้รับ tripLocations:", places);
+          initMapWithPlaces();
+        }
+      });
+
+      function initMapWithPlaces() {
+        map = new google.maps.Map(document.getElementById("map"), {
+          center: { lat: 7.6, lng: 100.05 },
+          zoom: 13,
+        });
+
+        places.forEach((p) => {
+          new google.maps.Marker({
+            position: { lat: p.lat, lng: p.lng },
+            map,
+            title: p.name,
+          });
+
+          new google.maps.Circle({
+            strokeColor: "#00bfa5",
+            fillColor: "#00bfa5",
+            fillOpacity: 0.2,
+            strokeOpacity: 0.5,
+            map,
+            center: { lat: p.lat, lng: p.lng },
+            radius: p.radius,
+          });
+        });
+      }
+
+      function startTracking() {
+        if (!navigator.geolocation) return alert("เบราว์เซอร์ไม่รองรับ GPS");
+
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const userPos = { lat, lng };
+
+            if (userMarker) {
+              userMarker.setPosition(userPos);
+            } else {
+              userMarker = new google.maps.Marker({
+                position: userPos,
+                map,
+                title: "คุณอยู่ที่นี่",
+                icon: {
+                  url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+                },
+              });
+            }
+
+            map.setCenter(userPos);
+
+            places.forEach((place) => {
+              const dist = haversineDistance(lat, lng, place.lat, place.lng);
+              if (dist <= place.radius && !visited[place.id]) {
+                visited[place.id] = true;
+                const speak = new SpeechSynthesisUtterance(place.message);
+                speak.lang = "th-TH";
+                speechSynthesis.speak(speak);
+              }
+            });
+          },
+          (err) => {
+            console.error("GPS error:", err.message);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          }
+        );
+
+        alert("กำลังติดตามตำแหน่งของคุณ กรุณาเปิดหน้านี้ไว้");
+      }
+
+      function stopTracking() {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+          alert("หยุดติดตามแล้ว");
+        }
+      }
+
+      function haversineDistance(lat1, lng1, lat2, lng2) {
+        const R = 6371000;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLng = ((lng2 - lng1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      function simulateOnePlace() {
+        if (places.length === 0) {
+          alert("ยังไม่ได้รับข้อมูลสถานที่ ลองใหม่อีกครั้ง");
+          return;
+        }
+
+        if (testIndex >= places.length) {
+          alert("คุณทดสอบครบทุกจุดแล้ว 🎉");
+          testIndex = 0;
+          return;
+        }
+
+        const testPlace = places[testIndex];
+        const fakePos = {
+          coords: {
+            latitude: testPlace.lat,
+            longitude: testPlace.lng,
+          },
+        };
+
+        console.log(`🔍 ทดสอบจุดที่ ${testIndex + 1}: ${testPlace.name}`);
+        visited = {};
+        handleSimulatedPosition(fakePos);
+        testIndex++;
+      }
+
+      function handleSimulatedPosition(position) {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const userPos = { lat, lng };
+
+        if (userMarker) {
+          userMarker.setPosition(userPos);
+        } else {
+          userMarker = new google.maps.Marker({
+            position: userPos,
+            map,
+            title: "คุณอยู่ที่นี่ (จำลอง)",
+            icon: {
+              url: "https://maps.google.com/mapfiles/ms/icons/purple-dot.png",
+            },
+          });
+        }
+
+        map.setCenter(userPos);
+
+        places.forEach((place) => {
+          const dist = haversineDistance(lat, lng, place.lat, place.lng);
+          if (dist <= place.radius && !visited[place.id]) {
+            visited[place.id] = true;
+            const speak = new SpeechSynthesisUtterance(place.message);
+            speak.lang = "th-TH";
+            speechSynthesis.speak(speak);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
